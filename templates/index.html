@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B3 Investment Screener 🇧🇷</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="/static/app.js"></script>
+</head>
+<body>
+    <div x-data="screener">
+        <header>
+            <div class="container">
+                <h1>📊 B3 Investment Screener</h1>
+                <div class="subtitle">🇧🇷 Análise fundamentalista de ações e FIIs</div>
+            </div>
+        </header>
+
+        <div class="container">
+            <!-- Tabs -->
+            <div class="tabs">
+                <button
+                    class="tab-button"
+                    :class="{ 'active': activeTab === 'stocks' }"
+                    @click="switchTab('stocks')">
+                    Ações
+                </button>
+                <button
+                    class="tab-button"
+                    :class="{ 'active': activeTab === 'fiis' }"
+                    @click="switchTab('fiis')">
+                    Fundos Imobiliários
+                </button>
+            </div>
+
+            <!-- Alerts -->
+            <div x-show="error" class="alert alert-error" x-text="error"></div>
+            <div x-show="successMessage" class="alert alert-success" x-text="successMessage"></div>
+
+            <!-- Control Panel -->
+            <div class="controls" :class="filtersExpanded ? 'controls-expanded' : 'controls-collapsed'">
+                <div class="controls-header">
+                    <h2 @click="toggleFilters">
+                        <span class="toggle-icon" :class="{ 'expanded': filtersExpanded }">▼</span>
+                        Filtros de Análise
+                        <span class="filter-summary" x-show="!filtersExpanded">
+                            (clique para editar)
+                        </span>
+                    </h2>
+                    <div class="controls-actions">
+                        <span class="last-update" x-text="'Última atualização: ' + (currentLastUpdate || 'Nunca')"></span>
+                        <button class="btn btn-secondary" @click="resetFilters" x-show="filtersExpanded">Redefinir</button>
+                        <button class="btn btn-secondary" @click="exportCSV" :disabled="currentData.length === 0">
+                            📥 Exportar CSV
+                        </button>
+                        <button class="btn btn-primary" @click="refreshData" :disabled="loading">
+                            <span x-show="!loading">Atualizar dados</span>
+                            <span x-show="loading" class="loading"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stock Filters -->
+                <div x-show="activeTab === 'stocks' && filtersExpanded" class="filters-grid">
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            P/L
+                            <span class="tooltip">
+                                <span class="tooltip-icon">?</span>
+                                <span class="tooltip-text">
+                                    Preço sobre Lucro. Mede quanto você paga por cada R$1 de lucro.
+                                    P/L baixo pode indicar subvalorização.
+                                </span>
+                            </span>
+                        </label>
+                        <div class="filter-inputs">
+                            <input type="number" x-model.number="stockFilters.pl_min" placeholder="Mín" step="0.1">
+                            <input type="number" x-model.number="stockFilters.pl_max" placeholder="Máx" step="0.1">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            P/VP
+                            <span class="tooltip">
+                                <span class="tooltip-icon">?</span>
+                                <span class="tooltip-text">
+                                    Preço sobre Valor Patrimonial. Compara preço de mercado com valor contábil.
+                                    P/VP abaixo de 1 sugere que está negociando abaixo do valor patrimonial.
+                                </span>
+                            </span>
+                        </label>
+                        <div class="filter-inputs">
+                            <input type="number" x-model.number="stockFilters.pvp_min" placeholder="Mín" step="0.1">
+                            <input type="number" x-model.number="stockFilters.pvp_max" placeholder="Máx" step="0.1">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            Div. Yield
+                            <span class="tooltip">
+                                <span class="tooltip-icon">?</span>
+                                <span class="tooltip-text">
+                                    Dividend Yield. Percentual de dividendos pagos sobre o preço.
+                                    Yield alto indica boa distribuição de lucros aos acionistas.
+                                </span>
+                            </span>
+                        </label>
+                        <div class="filter-inputs">
+                            <input type="number" x-model.number="stockFilters.div_yield_min" placeholder="Mín" step="0.01">
+                            <input type="number" x-model.number="stockFilters.div_yield_max" placeholder="Máx" step="0.01">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            EV/EBIT
+                            <span class="tooltip">
+                                <span class="tooltip-icon">?</span>
+                                <span class="tooltip-text">
+                                    Enterprise Value sobre EBIT. Mede quantos anos leva para pagar o valor da empresa.
+                                    Valor baixo (< 10) indica boa relação preço/lucro operacional.
+                                </span>
+                            </span>
+                        </label>
+                        <div class="filter-inputs">
+                            <input type="number" x-model.number="stockFilters.ev_ebit_min" placeholder="Mín" step="0.1">
+                            <input type="number" x-model.number="stockFilters.ev_ebit_max" placeholder="Máx" step="0.1">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            ROIC
+                            <span class="tooltip">
+                                <span class="tooltip-icon">?</span>
+                                <span class="tooltip-text">
+                                    Retorno sobre Capital Investido. Eficiência do capital alocado.
+                                    Acima de 10% indica boa gestão e vantagem competitiva.
+                                </span>
+                            </span>
+                        </label>
+                        <div class="filter-inputs">
+                            <input type="number" x-model.number="stockFilters.roic_min" placeholder="Mín" step="0.01">
+                            <input type="number" x-model.number="stockFilters.roic_max" placeholder="Máx" step="0.01">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            ROE
+                            <span class="tooltip">
+                                <span class="tooltip-icon">?</span>
+                                <span class="tooltip-text">
+                                    Retorno sobre Patrimônio Líquido. Rentabilidade do capital dos acionistas.
+                                    ROE alto (> 15%) indica empresa lucrativa.
+                                </span>
+                            </span>
+                        </label>
+                        <div class="filter-inputs">
+                            <input type="number" x-model.number="stockFilters.roe_min" placeholder="Mín" step="0.01">
+                            <input type="number" x-model.number="stockFilters.roe_max" placeholder="Máx" step="0.01">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            Dív. Bruta / Patrim.
+                            <span class="tooltip">
+                                <span class="tooltip-icon">?</span>
+                                <span class="tooltip-text">
+                                    Dívida Bruta sobre Patrimônio. Nível de endividamento.
+                                    Abaixo de 1 é saudável, acima de 3 pode ser arriscado.
+                                </span>
+                            </span>
+                        </label>
+                        <div class="filter-inputs">
+                            <input type="number" x-model.number="stockFilters.div_bruta_patrim_min" placeholder="Mín" step="0.1">
+                            <input type="number" x-model.number="stockFilters.div_bruta_patrim_max" placeholder="Máx" step="0.1">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            Cresc. Rec. 5a
+                            <span class="tooltip">
+                                <span class="tooltip-icon">?</span>
+                                <span class="tooltip-text">
+                                    Crescimento de Receita nos últimos 5 anos. Taxa de crescimento anual.
+                                    Acima de 10% indica empresa em expansão.
+                                </span>
+                            </span>
+                        </label>
+                        <div class="filter-inputs">
+                            <input type="number" x-model.number="stockFilters.cresc_rec_5a_min" placeholder="Mín" step="0.01">
+                            <input type="number" x-model.number="stockFilters.cresc_rec_5a_max" placeholder="Máx" step="0.01">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- FII Filters -->
+                <div x-show="activeTab === 'fiis' && filtersExpanded" class="filters-grid">
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            Dividend Yield
+                            <span class="tooltip">
+                                <span class="tooltip-icon">?</span>
+                                <span class="tooltip-text">
+                                    Dividendos anuais divididos pelo preço. Mostra retorno de renda passiva.
+                                    Mínimo típico: 6% para FIIs de qualidade.
+                                </span>
+                            </span>
+                        </label>
+                        <div class="filter-inputs">
+                            <input type="number" x-model.number="fiiFilters.dividend_yield_min" placeholder="Mín" step="0.01">
+                            <input type="number" x-model.number="fiiFilters.dividend_yield_max" placeholder="Máx" step="0.01">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            P/VP
+                            <span class="tooltip">
+                                <span class="tooltip-icon">?</span>
+                                <span class="tooltip-text">
+                                    Preço sobre Valor Patrimonial. Compara cotação com valor dos imóveis.
+                                    P/VP próximo de 1 indica negociação justa.
+                                </span>
+                            </span>
+                        </label>
+                        <div class="filter-inputs">
+                            <input type="number" x-model.number="fiiFilters.pvp_min" placeholder="Mín" step="0.01">
+                            <input type="number" x-model.number="fiiFilters.pvp_max" placeholder="Máx" step="0.01">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            Liquidez (R$)
+                            <span class="tooltip">
+                                <span class="tooltip-icon">?</span>
+                                <span class="tooltip-text">
+                                    Liquidez diária média. Volume negociado por dia.
+                                    Mínimo recomendado: R$ 50.000 para facilitar compra/venda.
+                                </span>
+                            </span>
+                        </label>
+                        <div class="filter-inputs">
+                            <input type="number" x-model.number="fiiFilters.liquidez_min" placeholder="Mín" step="1000">
+                            <input type="number" x-model.number="fiiFilters.liquidez_max" placeholder="Máx" step="1000">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            Cap Rate
+                            <span class="tooltip">
+                                <span class="tooltip-icon">?</span>
+                                <span class="tooltip-text">
+                                    Taxa de Capitalização. Retorno anual dos imóveis.
+                                    Acima de 7% indica bom retorno operacional dos ativos.
+                                </span>
+                            </span>
+                        </label>
+                        <div class="filter-inputs">
+                            <input type="number" x-model.number="fiiFilters.cap_rate_min" placeholder="Mín" step="0.01">
+                            <input type="number" x-model.number="fiiFilters.cap_rate_max" placeholder="Máx" step="0.01">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            Vacância Média
+                            <span class="tooltip">
+                                <span class="tooltip-icon">?</span>
+                                <span class="tooltip-text">
+                                    Percentual de imóveis vazios. Menor = mais estável.
+                                    Acima de 15% é sinal de alerta (risco de redução de dividendos).
+                                </span>
+                            </span>
+                        </label>
+                        <div class="filter-inputs">
+                            <input type="number" x-model.number="fiiFilters.vacancia_media_min" placeholder="Mín" step="0.01">
+                            <input type="number" x-model.number="fiiFilters.vacancia_media_max" placeholder="Máx" step="0.01">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div class="results">
+                <div class="results-header">
+                    <h3 x-text="activeTab === 'stocks' ? 'Ações Filtradas' : 'FIIs Filtrados'"></h3>
+                    <div class="results-count" x-text="currentData.length + ' resultado(s) encontrado(s)'"></div>
+                </div>
+
+                <!-- Empty state -->
+                <div x-show="!loading && currentData.length === 0" class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <div class="empty-state-message">Nenhum resultado encontrado</div>
+                    <div class="empty-state-hint">
+                        Ajuste os filtros ou clique em "Atualizar dados" para carregar informações
+                    </div>
+                </div>
+
+                <!-- Stock Table -->
+                <div x-show="!loading && activeTab === 'stocks' && stocks.length > 0" class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th @click.stop="showMetricInfo('score')" :class="sortClass('score')" style="cursor: help;">
+                                    <span @click.stop="sort('score')" style="cursor: pointer;">Score ↕</span>
+                                </th>
+                                <th @click="sort('papel')" :class="sortClass('papel')">Papel</th>
+                                <th @click="sort('cotacao')" :class="sortClass('cotacao')">Cotação</th>
+                                <th @click.stop="showMetricInfo('pl')" style="cursor: help;">
+                                    <span @click.stop="sort('pl')" style="cursor: pointer;">P/L ↕</span>
+                                </th>
+                                <th @click.stop="showMetricInfo('pvp')" style="cursor: help;">
+                                    <span @click.stop="sort('pvp')" style="cursor: pointer;">P/VP ↕</span>
+                                </th>
+                                <th @click.stop="showMetricInfo('div_yield')" style="cursor: help;">
+                                    <span @click.stop="sort('div_yield')" style="cursor: pointer;">Div.Yield ↕</span>
+                                </th>
+                                <th @click.stop="showMetricInfo('ev_ebit')" style="cursor: help;">
+                                    <span @click.stop="sort('ev_ebit')" style="cursor: pointer;">EV/EBIT ↕</span>
+                                </th>
+                                <th @click.stop="showMetricInfo('roic')" style="cursor: help;">
+                                    <span @click.stop="sort('roic')" style="cursor: pointer;">ROIC ↕</span>
+                                </th>
+                                <th @click.stop="showMetricInfo('roe')" style="cursor: help;">
+                                    <span @click.stop="sort('roe')" style="cursor: pointer;">ROE ↕</span>
+                                </th>
+                                <th @click="sort('liq_2meses')" :class="sortClass('liq_2meses')">Liq. 2m</th>
+                                <th @click.stop="showMetricInfo('div_bruta_patrim')" style="cursor: help;">
+                                    <span @click.stop="sort('div_bruta_patrim')" style="cursor: pointer;">Dív.L/P ↕</span>
+                                </th>
+                                <th @click.stop="showMetricInfo('cresc_rec_5a')" style="cursor: help;">
+                                    <span @click.stop="sort('cresc_rec_5a')" style="cursor: pointer;">Cresc.5a ↕</span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="stock in stocks" :key="stock.papel">
+                                <tr>
+                                    <td>
+                                        <div style="display: flex; flex-direction: column; gap: 2px;">
+                                            <span class="score-badge" :class="scoreClass(stock.score)" x-text="formatNumber(stock.score)"></span>
+                                            <span style="font-size: 11px; color: #6b7280;" x-text="'Q: ' + formatNumber(stock.quality_score, 1)"></span>
+                                        </div>
+                                    </td>
+                                    <td><strong x-text="stock.papel"></strong></td>
+                                    <td x-text="formatNumber(stock.cotacao)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(stock, 'pl') }" x-text="formatNumber(stock.pl)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(stock, 'pvp') }" x-text="formatNumber(stock.pvp)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(stock, 'div_yield') }" x-text="formatPercent(stock.div_yield)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(stock, 'ev_ebit') }" x-text="formatNumber(stock.ev_ebit)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(stock, 'roic') }" x-text="formatPercent(stock.roic)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(stock, 'roe') }" x-text="formatPercent(stock.roe)"></td>
+                                    <td x-text="formatLarge(stock.liq_2meses)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(stock, 'div_bruta_patrim') }" x-text="formatNumber(stock.div_bruta_patrim)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(stock, 'cresc_rec_5a') }" x-text="formatPercent(stock.cresc_rec_5a)"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- FII Table -->
+                <div x-show="!loading && activeTab === 'fiis' && fiis.length > 0" class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th @click.stop="showMetricInfo('score')" style="cursor: help;">
+                                    <span @click.stop="sort('score')" style="cursor: pointer;">Score ↕</span>
+                                </th>
+                                <th @click="sort('papel')" :class="sortClass('papel')">Papel</th>
+                                <th @click="sort('segmento')" :class="sortClass('segmento')">Segmento</th>
+                                <th @click="sort('cotacao')" :class="sortClass('cotacao')">Cotação</th>
+                                <th @click.stop="showMetricInfo('dividend_yield')" style="cursor: help;">
+                                    <span @click.stop="sort('dividend_yield')" style="cursor: pointer;">Div.Yield ↕</span>
+                                </th>
+                                <th @click="sort('ffo_yield')" :class="sortClass('ffo_yield')">FFO Yield</th>
+                                <th @click.stop="showMetricInfo('pvp')" style="cursor: help;">
+                                    <span @click.stop="sort('pvp')" style="cursor: pointer;">P/VP ↕</span>
+                                </th>
+                                <th @click.stop="showMetricInfo('liquidez')" style="cursor: help;">
+                                    <span @click.stop="sort('liquidez')" style="cursor: pointer;">Liquidez ↕</span>
+                                </th>
+                                <th @click.stop="showMetricInfo('cap_rate')" style="cursor: help;">
+                                    <span @click.stop="sort('cap_rate')" style="cursor: pointer;">Cap Rate ↕</span>
+                                </th>
+                                <th @click.stop="showMetricInfo('vacancia_media')" style="cursor: help;">
+                                    <span @click.stop="sort('vacancia_media')" style="cursor: pointer;">Vacância ↕</span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="fii in fiis" :key="fii.papel">
+                                <tr>
+                                    <td>
+                                        <div style="display: flex; flex-direction: column; gap: 2px;">
+                                            <span class="score-badge" :class="scoreClass(fii.score)" x-text="formatNumber(fii.score)"></span>
+                                            <span style="font-size: 11px; color: #6b7280;" x-text="'Q: ' + formatNumber(fii.quality_score, 1)"></span>
+                                        </div>
+                                    </td>
+                                    <td><strong x-text="fii.papel"></strong></td>
+                                    <td x-text="fii.segmento || '-'"></td>
+                                    <td x-text="formatNumber(fii.cotacao)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(fii, 'dividend_yield') }" x-text="formatPercent(fii.dividend_yield)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(fii, 'ffo_yield') }" x-text="formatPercent(fii.ffo_yield)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(fii, 'pvp') }" x-text="formatNumber(fii.pvp)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(fii, 'liquidez') }" x-text="formatLarge(fii.liquidez)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(fii, 'cap_rate') }" x-text="formatPercent(fii.cap_rate)"></td>
+                                    <td :class="{ 'winner-cell': isWinningMetric(fii, 'vacancia_media') }" x-text="formatPercent(fii.vacancia_media)"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <footer>
+                <p>⚠️ Apenas para fins educacionais. Não é recomendação de investimento.</p>
+                <p style="margin-top: 8px; font-size: 12px;">
+                    Dados obtidos de Fundamentus.com.br
+                </p>
+            </footer>
+        </div>
+
+        <!-- Metric Info Modal -->
+        <div x-show="selectedMetric"
+             class="metric-modal"
+             @click.self="closeMetricInfo"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             style="display: none;">
+
+            <div class="metric-modal-content" x-show="selectedMetric">
+                <div class="metric-modal-header">
+                    <h3 x-text="selectedMetric?.name"></h3>
+                    <button class="metric-modal-close" @click="closeMetricInfo">&times;</button>
+                </div>
+
+                <div class="metric-modal-body">
+                    <div class="metric-description" x-text="selectedMetric?.description"></div>
+
+                    <div class="metric-filters" x-show="selectedMetric?.filters">
+                        <div class="metric-filters-title">Filtro Aplicado</div>
+                        <div class="metric-filter-range" x-text="selectedMetric?.filters"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
