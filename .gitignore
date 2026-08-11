@@ -39,3 +39,7 @@ Thumbs.db
 # Temporary
 *.tmp
 .cache/
+
+# Sample files
+*.xlsx
+*.xls
