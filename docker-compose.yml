@@ -4,9 +4,15 @@ services:
   web:
     build: .
     ports:
-      - "8000:8000"
+      # Binds port only to localhost (blocks local network access)
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./data:/app/data
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
